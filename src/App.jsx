@@ -27,6 +27,7 @@ const API_URL = 'http://localhost:3001'
 const DOWNLOAD_STATUS = {
   PREPARING: 'preparing',
   DOWNLOADING: 'downloading',
+  REENCODING: 'reencoding',
   COMPLETE: 'complete',
   ERROR: 'error'
 }
@@ -35,6 +36,7 @@ function getStatusText(status, progress, error) {
   switch (status) {
     case DOWNLOAD_STATUS.PREPARING: return 'Preparing...'
     case DOWNLOAD_STATUS.DOWNLOADING: return `${progress.toFixed(0)}%`
+    case DOWNLOAD_STATUS.REENCODING: return 'Finalizing...'
     case DOWNLOAD_STATUS.COMPLETE: return 'Complete'
     case DOWNLOAD_STATUS.ERROR: return error || 'Failed'
     default: return 'Starting...'
@@ -509,9 +511,9 @@ function App() {
         d.id === newDownload.id ? { ...d, downloadId, status: 'downloading' } : d
       ))
 
-      // Poll for status - slower interval to avoid flooding
+      // Poll for status - 6 minutes max to account for ffmpeg re-encoding
       let pollCount = 0
-      const maxPolls = 1200 // 2 minutes at 100ms intervals
+      const maxPolls = 3600 // 6 minutes at 100ms intervals
       const pollInterval = setInterval(async () => {
         pollCount++
         if (pollCount > maxPolls) {
