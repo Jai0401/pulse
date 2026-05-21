@@ -516,26 +516,6 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="logo-section">
-          <PulseLogo size={48} />
-          <div className="logo-text">
-            <h1>PULSE</h1>
-            <span>Media Downloader</span>
-          </div>
-        </div>
-        <nav className="nav-links">
-          <motion.button
-            className={`nav-btn ${showHistory ? 'active' : ''}`}
-            onClick={() => setShowHistory(!showHistory)}
-            whileHover={{ scale: 1.05 }}
-          >
-            <Clock size={18} />
-            History
-          </motion.button>
-        </nav>
-      </header>
-
       <main className="main-content">
         <div className="hero-section">
           <motion.h2
@@ -647,10 +627,6 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <footer className="app-footer">
-        <p>Powered by <strong>yt-dlp</strong> • Free & Open Source</p>
-      </footer>
     </div>
   )
 }
