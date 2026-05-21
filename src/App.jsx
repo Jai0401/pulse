@@ -102,30 +102,45 @@ function detectMediaUrl(text) {
 
 function UrlInput({ value, onChange, onSubmit, isProcessing }) {
   const [isFocused, setIsFocused] = useState(false)
+  const [clipboardUrl, setClipboardUrl] = useState(null)
+  const [showHint, setShowHint] = useState(false)
   const inputRef = useRef(null)
   const lastPastedRef = useRef(null)
   const detectedPlatform = value ? detectPlatform(value) : null
 
-  // Auto-paste from clipboard on mount if input is empty
+  // Check clipboard on mount and window focus
   useEffect(() => {
-    const autoPaste = async () => {
+    const checkClipboard = async () => {
       if (value) return
       try {
         const text = await navigator.clipboard.readText()
         const detected = detectMediaUrl(text)
-        if (detected) {
-          lastPastedRef.current = detected
-          onChange(detected)
+        if (detected && detected !== lastPastedRef.current) {
+          setClipboardUrl(detected)
+          setShowHint(true)
         }
       } catch (err) {
         // Clipboard access denied
       }
     }
-    autoPaste()
-  }, [])
+    checkClipboard()
+    const handleFocus = () => checkClipboard()
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [value])
+
+  const handlePasteFromHint = () => {
+    if (clipboardUrl) {
+      lastPastedRef.current = clipboardUrl
+      onChange(clipboardUrl)
+      setShowHint(false)
+      inputRef.current?.focus()
+    }
+  }
 
   const handleClear = () => {
-    lastPastedRef.current = null
+    lastPastedRef.current = clipboardUrl
+    setShowHint(false)
     onChange('')
   }
 
@@ -159,6 +174,22 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
           </motion.button>
         )}
       </div>
+      <AnimatePresence>
+        {clipboardUrl && showHint && !value && (
+          <motion.button
+            className="clipboard-hint"
+            onClick={handlePasteFromHint}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            type="button"
+          >
+            <span className="hint-icon"><Link2 size={12} /></span>
+            <span className="hint-text">Paste from clipboard</span>
+            <span className="hint-url">{clipboardUrl.length > 40 ? clipboardUrl.substring(0, 40) + '...' : clipboardUrl}</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {detectedPlatform && detectedPlatform.id !== 'generic' && (
           <motion.div

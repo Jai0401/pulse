@@ -197,6 +197,44 @@ body {
   background: var(--bg-elevated);
 }
 
+.clipboard-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clipboard-hint:hover {
+  border-color: var(--accent-sky);
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.clipboard-hint .hint-icon {
+  color: var(--accent-sky);
+}
+
+.clipboard-hint .hint-text {
+  font-weight: 500;
+}
+
+.clipboard-hint .hint-url {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .input-wrapper {
   display: flex;
   align-items: center;
