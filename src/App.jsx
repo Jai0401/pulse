@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Link2, Music, Video, Image, FileText, Globe, Loader2, Check, X,
-  Clock, HardDrive, Sparkles, Zap, Layers, Trash2, Play, AlertCircle
+  Clock, HardDrive, Sparkles, Play, AlertCircle, Trash2
 } from 'lucide-react'
 import './App.css'
 
@@ -62,17 +62,6 @@ function PulseLogo({ size = 40 }) {
         </linearGradient>
       </defs>
     </svg>
-  )
-}
-
-function AnimatedBackground() {
-  return (
-    <div className="animated-bg">
-      <div className="grid-lines" />
-      <div className="gradient-orb orb-1" />
-      <div className="gradient-orb orb-2" />
-      <div className="scanline" />
-    </div>
   )
 }
 
@@ -156,7 +145,7 @@ function FormatSelector({ selected, onSelect, onQualitySelect, selectedQuality, 
 
   return (
     <div className="format-selector">
-      <h3><Layers size={16} /> Select Format</h3>
+      <h3>Select Format</h3>
       <div className="format-grid">
         {FORMAT_OPTIONS.map((format) => (
           <motion.div
@@ -527,8 +516,6 @@ function App() {
 
   return (
     <div className="app">
-      <AnimatedBackground />
-
       <header className="app-header">
         <div className="logo-section">
           <PulseLogo size={48} />
@@ -625,7 +612,6 @@ function App() {
               >
                 <Download size={20} />
                 <span>Download Now</span>
-                <Zap size={16} />
               </motion.button>
             </motion.div>
           )}
