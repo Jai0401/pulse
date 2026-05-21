@@ -121,14 +121,15 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
     video: () => {
       const heightMatch = quality.match(/(\d+)p?/);
       const height = heightMatch ? heightMatch[1] : null;
-      const qualSelector = height ? `bestvideo[height<=${height}]+bestaudio/best` : 'bestvideo+bestaudio/best';
+      const qualSelector = height ? `bestvideo[height<=${height}]+bestaudio/best` : 'bestvideo[height<=1080]+bestaudio/best';
       return [
         '-o', `${tempPath}.%(ext)s`, '--no-warnings', '--merge-output-format', 'mp4',
         '-f', qualSelector, url
       ];
     },
     thumbnail: () => [
-      '--write-thumbnail', '--convert-thumbnails', outputFormat ? outputFormat.toLowerCase() : 'jpg',
+      '--skip-download', '--write-thumbnail',
+      '--convert-thumbnails', outputFormat ? outputFormat.toLowerCase() : 'jpg',
       '-o', `${tempPath}.%(ext)s`, '--no-warnings', url
     ],
     subtitle: () => [
@@ -177,9 +178,31 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
         }
         const downloadedFile = files.find(f => f.startsWith(tempFilename));
         if (downloadedFile) {
-          dl.status = 'complete';
-          dl.progress = 100;
-          dl.filename = downloadedFile;
+          // Re-encode to H264 for QuickTime compatibility if needed
+          if (dl.format === 'video') {
+            const inputPath = path.join(DOWNLOAD_DIR, downloadedFile);
+            const outputPath = path.join(DOWNLOAD_DIR, `${tempFilename}_reencoded.mp4`);
+            const ffmpegProcess = spawn('ffmpeg', [
+              '-i', inputPath, '-c:v', 'libx264', '-c:a', 'aac',
+              '-y', outputPath
+            ]);
+            ffmpegProcess.on('close', (ffCode) => {
+              if (ffCode === 0) {
+                fs.unlink(inputPath, () => {});
+                dl.status = 'complete';
+                dl.progress = 100;
+                dl.filename = `${tempFilename}_reencoded.mp4`;
+              } else {
+                dl.status = 'complete';
+                dl.progress = 100;
+                dl.filename = downloadedFile;
+              }
+            });
+          } else {
+            dl.status = 'complete';
+            dl.progress = 100;
+            dl.filename = downloadedFile;
+          }
         } else {
           dl.status = 'error';
           dl.error = 'File not found';
