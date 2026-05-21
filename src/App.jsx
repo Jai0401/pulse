@@ -79,9 +79,75 @@ function PlatformBadge({ platform, size = 'md' }) {
   )
 }
 
+// Media URL regex patterns
+const MEDIA_PATTERNS = [
+  // YouTube
+  /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/,
+  // Instagram
+  /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p\/|reel\/|tv\/)[a-zA-Z0-9_-]+/,
+  // TikTok
+  /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[a-zA-Z0-9._-]+\/video\/\d+/,
+  // Twitter/X
+  /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/status\/\d+/,
+]
+
+function detectMediaUrl(text) {
+  if (!text) return null
+  for (const pattern of MEDIA_PATTERNS) {
+    const match = text.match(pattern)
+    if (match) return match[0]
+  }
+  return null
+}
+
 function UrlInput({ value, onChange, onSubmit, isProcessing }) {
   const [isFocused, setIsFocused] = useState(false)
+  const [clipboardUrl, setClipboardUrl] = useState(null)
+  const [showClipboardHint, setShowClipboardHint] = useState(false)
+  const inputRef = useRef(null)
+  const lastPastedRef = useRef(null)
   const detectedPlatform = value ? detectPlatform(value) : null
+
+  // Check clipboard on mount and when window gains focus
+  useEffect(() => {
+    const checkClipboard = async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const detected = detectMediaUrl(text)
+        if (detected) {
+          // Only show hint if this is a new URL we haven't shown before
+          if (detected !== lastPastedRef.current) {
+            setClipboardUrl(detected)
+            setShowClipboardHint(true)
+          }
+        }
+      } catch (err) {
+        // Clipboard access denied or empty
+      }
+    }
+
+    checkClipboard()
+
+    const handleFocus = () => checkClipboard()
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
+
+  const handleClear = () => {
+    onChange('')
+    // User explicitly cleared, don't re-paste this URL
+    lastPastedRef.current = clipboardUrl
+    setShowClipboardHint(false)
+  }
+
+  const handlePasteFromHint = () => {
+    if (clipboardUrl) {
+      lastPastedRef.current = clipboardUrl
+      onChange(clipboardUrl)
+      setShowClipboardHint(false)
+      inputRef.current?.focus()
+    }
+  }
 
   return (
     <motion.div
@@ -90,11 +156,16 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
       <div className="input-wrapper">
         <Link2 className="input-icon" size={20} />
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={() => {
+            setIsFocused(true)
+          }}
+          onBlur={() => {
+            setIsFocused(false)
+          }}
           onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
           placeholder="Paste any media URL to download..."
           disabled={isProcessing}
@@ -102,7 +173,7 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
         {value && (
           <motion.button
             className="clear-btn"
-            onClick={() => onChange('')}
+            onClick={handleClear}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
@@ -110,6 +181,22 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
           </motion.button>
         )}
       </div>
+      <AnimatePresence>
+        {clipboardUrl && showClipboardHint && !value && (
+          <motion.button
+            className="clipboard-hint"
+            onClick={handlePasteFromHint}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            type="button"
+          >
+            <span className="hint-icon"><Link2 size={12} /></span>
+            <span className="hint-text">Paste from clipboard</span>
+            <span className="hint-url">{clipboardUrl.length > 40 ? clipboardUrl.substring(0, 40) + '...' : clipboardUrl}</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {detectedPlatform && detectedPlatform.id !== 'generic' && (
           <motion.div
