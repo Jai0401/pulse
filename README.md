@@ -1,16 +1,63 @@
-# React + Vite
+# PULSE
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A sleek media downloader for YouTube, Instagram, TikTok, Twitter/X and 1000+ platforms — with real-time SSE progress and a modern dark UI.
 
-Currently, two official plugins are available:
+![PULSE](https://img.shields.io/badge/PULSE-0.1.0-00F0FF?style=flat-square)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Multi-Platform Support** — Download from YouTube, Instagram, TikTok, Twitter/X and 1000+ sites via yt-dlp
+- **Real-Time Progress** — SSE-powered live progress bar, no polling
+- **Format Options** — Video, Audio, Thumbnail, Subtitles with quality selectors
+- **Drag & Drop** — Drop a URL or text file directly onto the input
+- **Clipboard Detection** — Auto-detects media URLs from your clipboard
+- **QuickTime Compatible** — H.264 encoded videos that play natively on macOS
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech Stack
 
-## Expanding the ESLint configuration
+- **Frontend** — React 19 + Vite, Framer Motion, Lucide Icons
+- **Backend** — Express.js, SSE for real-time updates
+- **Media Processing** — yt-dlp with FFmpeg
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- yt-dlp installed (`brew install yt-dlp`)
+- FFmpeg installed (`brew install ffmpeg`)
+
+### Installation
+
+```bash
+# Clone the repo
+git clone https://github.com/Jai0401/pulse.git
+cd pulse
+
+# Install dependencies
+npm install
+
+# Start frontend (terminal 1)
+npm run dev
+
+# Start backend (terminal 2)
+node server/index.cjs
+```
+
+### Usage
+
+1. Paste any media URL into the input
+2. Select format (Video/Audio/Thumbnail/Subtitles)
+3. Choose quality and output format
+4. Click "Download Now"
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd/Ctrl + Enter` | Analyze URL |
+| `Esc` | Clear input |
+
+## License
+
+MIT
