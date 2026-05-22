@@ -1,6 +1,6 @@
 # PULSE
 
-A sleek media downloader for YouTube, Instagram, TikTok, Twitter/X and 1000+ platforms — with real-time SSE progress and a modern dark UI.
+A sleek media downloader for YouTube, Instagram, TikTok, Twitter/X and 1000+ platforms, with real-time SSE progress and a modern UI.
 
 ![PULSE](https://img.shields.io/badge/PULSE-0.1.0-00F0FF?style=flat-square)
 
@@ -9,7 +9,6 @@ A sleek media downloader for YouTube, Instagram, TikTok, Twitter/X and 1000+ pla
 - **Multi-Platform Support** — Download from YouTube, Instagram, TikTok, Twitter/X and 1000+ sites via yt-dlp
 - **Real-Time Progress** — SSE-powered live progress bar, no polling
 - **Format Options** — Video, Audio, Thumbnail, Subtitles with quality selectors
-- **Drag & Drop** — Drop a URL or text file directly onto the input
 - **Clipboard Detection** — Auto-detects media URLs from your clipboard
 - **QuickTime Compatible** — H.264 encoded videos that play natively on macOS
 
@@ -57,7 +56,3 @@ node server/index.cjs
 |----------|--------|
 | `Cmd/Ctrl + Enter` | Analyze URL |
 | `Esc` | Clear input |
-
-## License
-
-MIT
