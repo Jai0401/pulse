@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Link2, Music, Video, Image, FileText, Globe, Loader2, Check, X,
-  Clock, HardDrive, Sparkles, Play, AlertCircle, Trash2
+  HardDrive, Sparkles, AlertCircle
 } from 'lucide-react'
 import './App.css'
 
@@ -76,7 +76,6 @@ const FORMAT_OPTIONS = [
   { id: 'subtitle', label: 'Subtitles', icon: FileText, formats: ['SRT', 'VTT', 'ASS'], quality: ['Original', 'Translated'] },
 ]
 
-const MAX_HISTORY_ITEMS = 10
 const API_URL = 'http://localhost:3001'
 
 const DOWNLOAD_STATUS = {
@@ -105,21 +104,6 @@ function detectPlatform(url) {
     }
   }
   return PLATFORMS.find(p => p.id === 'generic')
-}
-
-function PulseLogo({ size = 40 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" className="pulse-logo">
-      <circle cx="20" cy="20" r="18" stroke="url(#pulseGrad)" strokeWidth="2" fill="none" />
-      <path d="M8 20h4l3-8 4 16 3-8h6" stroke="url(#pulseGrad)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <defs>
-        <linearGradient id="pulseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00F0FF" />
-          <stop offset="100%" stopColor="#FF00AA" />
-        </linearGradient>
-      </defs>
-    </svg>
-  )
 }
 
 // Media URL regex patterns
@@ -219,7 +203,7 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
           setClipboardUrl(detected)
           setShowHint(true)
         }
-      } catch (err) {
+      } catch {
         // Clipboard access denied
       }
     }
@@ -490,55 +474,6 @@ function DownloadProgress({ download }) {
   )
 }
 
-function HistoryPanel({ history, onClear }) {
-  return (
-    <div className="history-panel">
-      <div className="history-header">
-        <h3><Clock size={16} /> Recent Downloads</h3>
-        {history.length > 0 && (
-          <button className="clear-history" onClick={onClear}>
-            <Trash2 size={14} /> Clear
-          </button>
-        )}
-      </div>
-      <div className="history-list">
-        <AnimatePresence>
-          {history.map((item, i) => (
-            <motion.div
-              key={item.id}
-              className="history-item"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <div className="history-thumb">
-                {item.thumbnail ? (
-                  <img src={item.thumbnail} alt="" />
-                ) : (
-                  <Video size={14} />
-                )}
-              </div>
-              <div className="history-info">
-                <span className="history-title">{item.title}</span>
-                <span className="history-format">{item.format} • {item.quality}</span>
-              </div>
-              <button className="redownload-btn">
-                <Play size={12} />
-              </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {history.length === 0 && (
-          <div className="history-empty">
-            <Download size={24} />
-            <span>No downloads yet</span>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 function App() {
   const [url, setUrl] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -548,8 +483,6 @@ function App() {
   const [selectedQuality, setSelectedQuality] = useState(null)
   const [selectedOutputFormat, setSelectedOutputFormat] = useState(null)
   const [downloads, setDownloads] = useState([])
-  const [history, setHistory] = useState([])
-  const [showHistory, setShowHistory] = useState(false)
 
   const handleAnalyze = async () => {
     if (!url) return
@@ -660,15 +593,6 @@ function App() {
                 window.URL.revokeObjectURL(downloadUrl)
                 document.body.removeChild(a)
               })
-
-            setHistory(prev => [{
-              id: Date.now(),
-              title: newDownload.name,
-              format: selectedFormat,
-              quality: quality,
-              thumbnail: newDownload.thumbnail,
-              timestamp: new Date().toISOString()
-            }, ...prev.slice(0, 9)])
 
             eventSource.close()
           } else if (data.type === 'error') {
@@ -798,23 +722,6 @@ function App() {
           ))}
         </div>
       </main>
-
-      <AnimatePresence>
-        {showHistory && (
-          <motion.div
-            className="history-drawer"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          >
-            <HistoryPanel
-              history={history}
-              onClear={() => setHistory([])}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
