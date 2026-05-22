@@ -235,6 +235,33 @@ body {
   white-space: nowrap;
 }
 
+/* Drag and drop states */
+.url-input-container.dragging {
+  border-color: var(--accent-sky);
+  background: var(--bg-elevated);
+}
+
+.url-input-container.dragging .input-icon {
+  color: var(--accent-sky);
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: rgba(12, 12, 12, 0.95);
+  border-radius: 16px;
+  z-index: 10;
+  color: var(--accent-sky);
+  font-size: 0.9rem;
+  font-weight: 500;
+  pointer-events: none;
+}
+
 .input-wrapper {
   display: flex;
   align-items: center;
@@ -584,7 +611,7 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-bottom: 0.75rem;
+  margin-top: 1rem;
 }
 
 .download-icon {
