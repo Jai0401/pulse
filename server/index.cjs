@@ -56,7 +56,18 @@ app.post('/api/info', async (req, res) => {
 
     ytdlp.on('close', (code) => {
       if (code !== 0) {
-        return res.status(500).json({ error: error || 'Failed to fetch info' });
+        const errorLines = error.split('\n').filter(l => l.trim());
+        let errorMsg = 'Failed to fetch media info';
+        if (errorLines.length > 0) {
+          const relevantLines = errorLines.filter(l =>
+            !l.includes('[debug]') && !l.includes('[Verbose]')
+          );
+          if (relevantLines.length > 0) {
+            errorMsg = relevantLines[relevantLines.length - 1].trim();
+            errorMsg = errorMsg.replace(/^(ERROR|download|info):\s*/i, '');
+          }
+        }
+        return res.status(500).json({ error: errorMsg });
       }
 
       try {
@@ -172,16 +183,27 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
     if (!dl) return;
 
     if (code !== 0) {
+      const errorLines = error.split('\n').filter(l => l.trim());
+      let errorMsg = 'Download failed';
+      if (errorLines.length > 0) {
+        const relevantLines = errorLines.filter(l =>
+          !l.includes('[debug]') && !l.includes('[Verbose]')
+        );
+        if (relevantLines.length > 0) {
+          errorMsg = relevantLines[relevantLines.length - 1].trim();
+          errorMsg = errorMsg.replace(/^(ERROR|download|info):\s*/i, '');
+        }
+      }
       dl.status = 'error';
-      dl.error = 'Download failed';
-      broadcastProgress(downloadId, { type: 'error', error: 'Download failed' });
+      dl.error = errorMsg;
+      broadcastProgress(downloadId, { type: 'error', error: errorMsg });
     } else {
       // Find the downloaded file
       fs.readdir(DOWNLOAD_DIR, (err, files) => {
         if (err) {
           dl.status = 'error';
-          dl.error = 'File not found';
-          broadcastProgress(downloadId, { type: 'error', error: 'File not found' });
+          dl.error = 'Server error: could not read downloads folder';
+          broadcastProgress(downloadId, { type: 'error', error: 'Server error: could not read downloads folder' });
           return;
         }
         const downloadedFile = files.find(f => f.startsWith(tempFilename));
@@ -192,8 +214,8 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
           broadcastProgress(downloadId, { type: 'complete', progress: 100, status: 'complete', filename: downloadedFile });
         } else {
           dl.status = 'error';
-          dl.error = 'File not found';
-          broadcastProgress(downloadId, { type: 'error', error: 'File not found' });
+          dl.error = 'Downloaded file not found after processing';
+          broadcastProgress(downloadId, { type: 'error', error: 'Downloaded file not found after processing' });
         }
       });
     }

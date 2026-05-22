@@ -607,7 +607,11 @@ function App() {
       }
 
       eventSource.onerror = () => {
-        console.error('SSE connection error')
+        // Only show error if download is still in progress
+        setDownloads(prev => prev.map(d =>
+          d.id === newDownload.id && d.status === 'downloading'
+            ? { ...d, status: 'error', error: 'Connection lost. Please try again.' } : d
+        ))
         eventSource.close()
       }
 
