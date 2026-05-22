@@ -465,6 +465,7 @@ function App() {
     }
   }
 
+  // SSE-based download - replaces polling
   const handleDownload = async () => {
     if (!selectedFormat) return
 
@@ -506,50 +507,46 @@ function App() {
       const { downloadId } = await response.json()
       if (!downloadId) throw new Error('No download ID returned')
 
-      // Update download with ID
+      // Update download with ID and switch to SSE stream
       setDownloads(prev => prev.map(d =>
         d.id === newDownload.id ? { ...d, downloadId, status: 'downloading' } : d
       ))
 
-      // Poll for status - 6 minutes max to account for ffmpeg re-encoding
-      let pollCount = 0
-      const maxPolls = 3600 // 6 minutes at 100ms intervals
-      const pollInterval = setInterval(async () => {
-        pollCount++
-        if (pollCount > maxPolls) {
-          clearInterval(pollInterval)
-          setDownloads(prev => prev.map(d =>
-            d.id === newDownload.id ? { ...d, status: 'error', error: 'Download timed out' } : d
-          ))
-          return
-        }
+      // Open SSE connection for real-time progress
+      const eventSource = new EventSource(`${API_URL}/api/download/${downloadId}/stream`)
 
+      eventSource.onmessage = (event) => {
         try {
-          const statusRes = await fetch(`${API_URL}/api/download/${downloadId}/status`)
-          if (!statusRes.ok) throw new Error('Status check failed')
+          const data = JSON.parse(event.data)
 
-          const status = await statusRes.json()
+          if (data.type === 'connected') {
+            console.log('SSE connected for download:', downloadId)
+          } else if (data.type === 'progress') {
+            setDownloads(prev => prev.map(d =>
+              d.id === newDownload.id ? { ...d, progress: data.progress, status: data.status } : d
+            ))
+          } else if (data.type === 'complete') {
+            // Download complete - fetch the file
+            setDownloads(prev => prev.map(d =>
+              d.id === newDownload.id ? { ...d, progress: 100, status: 'complete', filename: data.filename } : d
+            ))
 
-          setDownloads(prev => prev.map(d =>
-            d.id === newDownload.id ? { ...d, progress: status.progress || 0, status: status.status } : d
-          ))
-
-          if (status.status === 'complete') {
-            clearInterval(pollInterval)
-
-            // Fetch the file
-            const fileRes = await fetch(`${API_URL}/api/download/${downloadId}/file`)
-            if (!fileRes.ok) throw new Error('File download failed')
-
-            const blob = await fileRes.blob()
-            const downloadUrl = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = downloadUrl
-            a.download = `${(mediaInfo?.title || 'media').replace(/[^a-zA-Z0-9]/g, '_')}.${outputFormat.toLowerCase()}`
-            document.body.appendChild(a)
-            a.click()
-            window.URL.revokeObjectURL(downloadUrl)
-            document.body.removeChild(a)
+            // Auto-download the file
+            fetch(`${API_URL}/api/download/${downloadId}/file`)
+              .then(fileRes => {
+                if (!fileRes.ok) throw new Error('File download failed')
+                return fileRes.blob()
+              })
+              .then(blob => {
+                const downloadUrl = window.URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = downloadUrl
+                a.download = `${(mediaInfo?.title || 'media').replace(/[^a-zA-Z0-9]/g, '_')}.${outputFormat.toLowerCase()}`
+                document.body.appendChild(a)
+                a.click()
+                window.URL.revokeObjectURL(downloadUrl)
+                document.body.removeChild(a)
+              })
 
             setHistory(prev => [{
               id: Date.now(),
@@ -560,32 +557,28 @@ function App() {
               timestamp: new Date().toISOString()
             }, ...prev.slice(0, 9)])
 
+            eventSource.close()
+          } else if (data.type === 'error') {
             setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, status: 'complete', progress: 100 } : d
+              d.id === newDownload.id ? { ...d, status: 'error', error: data.error } : d
             ))
-          } else if (status.status === 'error') {
-            clearInterval(pollInterval)
-            setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, status: 'error', error: status.error || 'Download failed' } : d
-            ))
+            eventSource.close()
           }
         } catch (err) {
-          console.error('Poll error:', err, 'downloadId:', downloadId)
-          // Only clear and error if we've polled enough or got a real error
-          if (pollCount > 5) {
-            clearInterval(pollInterval)
-            setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, status: 'error', error: err.message } : d
-            ))
-          }
+          console.error('SSE parse error:', err)
         }
-      }, 100)
+      }
 
-      // Cleanup after 5 minutes max
+      eventSource.onerror = () => {
+        console.error('SSE connection error')
+        eventSource.close()
+      }
+
+      // Cleanup after 6 minutes
       setTimeout(() => {
-        clearInterval(pollInterval)
+        eventSource.close()
         setDownloads(prev => prev.filter(d => d.id !== newDownload.id))
-      }, 300000)
+      }, 360000)
 
     } catch (err) {
       console.error('Download error:', err)

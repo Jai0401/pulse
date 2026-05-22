@@ -13,6 +13,7 @@ const PORT = 3001;
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 const downloads = new Map();
+const sseConnections = new Map();
 
 // Cleanup temp files older than 1 hour on startup
 try {
@@ -161,6 +162,7 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
       if (dl) {
         dl.progress = parseFloat(progressMatch[1]);
         dl.status = 'downloading';
+        broadcastProgress(downloadId, { type: 'progress', progress: dl.progress, status: 'downloading' });
       }
     }
   });
@@ -172,12 +174,14 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
     if (code !== 0) {
       dl.status = 'error';
       dl.error = 'Download failed';
+      broadcastProgress(downloadId, { type: 'error', error: 'Download failed' });
     } else {
       // Find the downloaded file
       fs.readdir(DOWNLOAD_DIR, (err, files) => {
         if (err) {
           dl.status = 'error';
           dl.error = 'File not found';
+          broadcastProgress(downloadId, { type: 'error', error: 'File not found' });
           return;
         }
         const downloadedFile = files.find(f => f.startsWith(tempFilename));
@@ -185,23 +189,66 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
           dl.status = 'complete';
           dl.progress = 100;
           dl.filename = downloadedFile;
+          broadcastProgress(downloadId, { type: 'complete', progress: 100, status: 'complete', filename: downloadedFile });
         } else {
           dl.status = 'error';
           dl.error = 'File not found';
+          broadcastProgress(downloadId, { type: 'error', error: 'File not found' });
         }
       });
     }
   });
 }
 
-// Get download status
-app.get('/api/download/:id/status', (req, res) => {
-  const dl = downloads.get(req.params.id);
-  if (!dl) {
-    return res.status(404).json({ error: 'Download not found' });
+// SSE stream for download progress
+app.get('/api/download/:id/stream', (req, res) => {
+  const downloadId = req.params.id;
+
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // Send initial connection event
+  res.write(`data: ${JSON.stringify({ type: 'connected', downloadId })}\n\n`);
+
+  // Store the response object for this download
+  if (!sseConnections.has(downloadId)) {
+    sseConnections.set(downloadId, new Set());
   }
-  res.json(dl);
+  sseConnections.get(downloadId).add(res);
+
+  // Keep connection alive with heartbeat
+  const heartbeat = setInterval(() => {
+    res.write(`: heartbeat\n\n`);
+  }, 15000);
+
+  // Cleanup on close
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    const conns = sseConnections.get(downloadId);
+    if (conns) {
+      conns.delete(res);
+      if (conns.size === 0) sseConnections.delete(downloadId);
+    }
+  });
 });
+
+// Broadcast event to all SSE connections for a download
+function broadcastProgress(downloadId, data) {
+  const conns = sseConnections.get(downloadId);
+  if (conns) {
+    const message = `data: ${JSON.stringify(data)}\n\n`;
+    conns.forEach(res => {
+      try {
+        res.write(message);
+      } catch (e) {
+        // Connection may already be closed
+      }
+    });
+  }
+}
 
 // Stream download file
 app.get('/api/download/:id/file', (req, res) => {
