@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   --bg-primary: #0c0c0c;
@@ -15,8 +15,9 @@
   --border: #2a2a2a;
   --border-subtle: #1f1f1f;
   --shadow: 0 1px 2px rgba(0,0,0,0.5);
-  --font-sans: 'Instrument Sans', -apple-system, sans-serif;
-  --font-serif: 'Newsreader', Georgia, serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-mono: ui-monospace, Consolas, monospace;
 }
 
 * {
@@ -101,7 +102,7 @@ body {
 }
 
 .logo-text h1 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 1.25rem;
   font-weight: 500;
   letter-spacing: 0.15em;
@@ -153,7 +154,7 @@ body {
 }
 
 .hero-section h2 {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(2.5rem, 6vw, 4rem);
   font-weight: 400;
   line-height: 1.1;
@@ -164,7 +165,8 @@ body {
 
 .hero-section h2 em {
   font-style: italic;
-  color: var(--accent-amber);
+  font-weight: 500;
+  color: var(--text-primary);
 }
 
 .hero-section p {
@@ -983,7 +985,7 @@ body {
     height: 20px;
   }
 
-  .format-label {
+  .format-card .format-label {
     font-size: 0.7rem;
   }
 
@@ -1066,7 +1068,7 @@ body {
     padding: 0.875rem 0.5rem;
   }
 
-  .format-card .format-label {
+  .format-card .format-card .format-label {
     font-size: 0.7rem;
   }
 
