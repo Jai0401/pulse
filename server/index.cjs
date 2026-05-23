@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -7,7 +9,24 @@ const crypto = require('crypto');
 
 const app = express();
 
+// Security: helmet headers
+app.use(helmet({
+  contentSecurityPolicy: false, // disabled for SSE compatibility with default config
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// Security: rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use('/api/', limiter);
+
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const COOKIES_PATH = process.env.COOKIES_PATH || '';
 const CORS_ORIGINS = (process.env.CORS_ORIGIN || FRONTEND_URL)
   .split(',')
   .map(origin => origin.trim())
@@ -60,6 +79,62 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 }
 
+// URL validation: whitelist known media domains
+const ALLOWED_DOMAINS = [
+  'youtube.com', 'youtu.be',
+  'instagram.com', 'instagr.am',
+  'tiktok.com',
+  'twitter.com', 'x.com',
+  'facebook.com', 'fb.watch',
+  'reddit.com', 'redd.it',
+  'vimeo.com',
+  'dailymotion.com',
+  'soundcloud.com',
+  'twitch.tv',
+  'spotify.com',
+  'bandcamp.com'
+];
+
+function isValidMediaUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
+// Auto-cleanup download entries after 30 minutes to prevent memory leaks
+const DOWNLOAD_TTL_MS = 30 * 60 * 1000;
+function scheduleCleanup(downloadId) {
+  setTimeout(() => {
+    const dl = downloads.get(downloadId);
+    if (dl) {
+      // Kill any lingering process
+      if (dl.process && !dl.process.killed) {
+        dl.process.kill('SIGTERM');
+        setTimeout(() => {
+          if (dl.process && !dl.process.killed) dl.process.kill('SIGKILL');
+        }, 5000);
+      }
+      // Delete temp file if still present
+      if (dl.filename) {
+        const filePath = path.join(DOWNLOAD_DIR, dl.filename);
+        fs.unlink(filePath, () => {});
+      }
+      downloads.delete(downloadId);
+    }
+    // Also cleanup SSE connections
+    const conns = sseConnections.get(downloadId);
+    if (conns) {
+      conns.forEach(res => {
+        try { res.end(); } catch (e) {}
+      });
+      sseConnections.delete(downloadId);
+    }
+  }, DOWNLOAD_TTL_MS);
+}
+
 // Parse video info
 app.post('/api/info', async (req, res) => {
   const { url } = req.body;
@@ -67,15 +142,25 @@ app.post('/api/info', async (req, res) => {
     return res.status(400).json({ error: 'URL required' });
   }
 
+  if (!isValidMediaUrl(url)) {
+    return res.status(400).json({ error: 'Invalid or unsupported media URL' });
+  }
+
   console.log(`[info] Fetching metadata: ${url}`);
 
   try {
-    const ytdlp = spawn('yt-dlp', [
+    const infoArgs = [
       '--dump-json',
       '--no-warnings',
       '--flat-playlist',
       url
-    ]);
+    ];
+
+    if (COOKIES_PATH) {
+      infoArgs.unshift('--cookies', COOKIES_PATH);
+    }
+
+    const ytdlp = spawn('yt-dlp', infoArgs, { timeout: 60000 });
 
     let data = '';
     let error = '';
@@ -131,7 +216,11 @@ app.post('/api/download', async (req, res) => {
     return res.status(400).json({ error: 'URL required' });
   }
 
-  const downloadId = `dl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  if (!isValidMediaUrl(url)) {
+    return res.status(400).json({ error: 'Invalid or unsupported media URL' });
+  }
+
+  const downloadId = crypto.randomUUID();
   const tempFilename = `media_${Date.now()}`;
   const tempPath = path.join(DOWNLOAD_DIR, tempFilename);
 
@@ -141,8 +230,12 @@ app.post('/api/download', async (req, res) => {
     status: 'preparing',
     progress: 0,
     filename: null,
-    error: null
+    error: null,
+    process: null
   });
+
+  // Schedule auto-cleanup
+  scheduleCleanup(downloadId);
 
   // Return download ID immediately
   res.json({ downloadId, status: 'started' });
@@ -191,13 +284,22 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
 
   const args = (formatHandlers[format] || (() => ['-o', `${tempPath}.%(ext)s`, '--no-warnings', url]))();
 
+  if (COOKIES_PATH) {
+    args.unshift('--cookies', COOKIES_PATH);
+  }
+
   const dl = downloads.get(downloadId);
   if (dl) {
     dl.format = format;
     dl.outputFormat = outputFormat;
   }
 
-  const ytdlp = spawn('yt-dlp', args);
+  const ytdlp = spawn('yt-dlp', args, { timeout: 30 * 60 * 1000 }); // 30 min max
+
+  // Store process reference so we can kill it if client disconnects
+  if (dl) {
+    dl.process = ytdlp;
+  }
 
   let error = '';
 
@@ -224,6 +326,9 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
   ytdlp.on('close', (code) => {
     const dl = downloads.get(downloadId);
     if (!dl) return;
+
+    // Mark process as done so we don't try to kill it later
+    dl.process = null;
 
     console.log(`[download] Finished ${downloadId} with code ${code}`);
 
@@ -299,6 +404,16 @@ app.get('/api/download/:id/stream', (req, res) => {
       conns.delete(res);
       if (conns.size === 0) sseConnections.delete(downloadId);
     }
+
+    // If download is still in progress, kill the yt-dlp process
+    const dl = downloads.get(downloadId);
+    if (dl && dl.process && !dl.process.killed && dl.status !== 'complete' && dl.status !== 'error') {
+      console.log(`[download] Client disconnected, killing process for ${downloadId}`);
+      dl.process.kill('SIGTERM');
+      setTimeout(() => {
+        if (dl.process && !dl.process.killed) dl.process.kill('SIGKILL');
+      }, 5000);
+    }
   });
 });
 
@@ -318,7 +433,7 @@ function broadcastProgress(downloadId, data) {
 }
 
 // Stream download file
-app.get('/api/download/:id/file', (req, res) => {
+app.get('/api/download/:id/file', async (req, res) => {
   const dl = downloads.get(req.params.id);
   if (!dl) {
     return res.status(404).json({ error: 'Download not found' });
@@ -328,11 +443,14 @@ app.get('/api/download/:id/file', (req, res) => {
   }
 
   const filePath = path.join(DOWNLOAD_DIR, dl.filename);
-  if (!fs.existsSync(filePath)) {
+
+  try {
+    await fs.promises.access(filePath);
+  } catch {
     return res.status(404).json({ error: 'File not found' });
   }
 
-  const stat = fs.statSync(filePath);
+  const stat = await fs.promises.stat(filePath);
   let finalFilename = dl.filename;
   const baseName = dl.filename.substring(0, dl.filename.lastIndexOf('.'));
 
@@ -360,7 +478,10 @@ app.get('/api/download/:id/file', (req, res) => {
   });
 
   fileStream.on('error', (err) => {
-    res.status(500).json({ error: err.message });
+    // Only send error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
   });
 });
 
@@ -377,8 +498,8 @@ app.get('/api/downloads', (req, res) => {
   });
 });
 
-// Serve downloads
-app.use('/downloads', express.static(DOWNLOAD_DIR));
+// REMOVED: app.use('/downloads', express.static(DOWNLOAD_DIR));
+// Files should only be accessed via /api/download/:id/file
 
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);

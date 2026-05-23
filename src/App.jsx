@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Download, Link2, Music, Video, Image, FileText, Globe, Loader2, Check, X,
@@ -113,7 +113,7 @@ const MEDIA_PATTERNS = [
   // Instagram
   /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p\/|reel\/|tv\/)[a-zA-Z0-9_-]+/,
   // TikTok
-  /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[a-zA-Z0-9._-]+\/video\/\d+/,
+  /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@?[a-zA-Z0-9._-]+\/video\/\d+/,
   // Twitter/X
   /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/status\/\d+/,
 ]
@@ -204,7 +204,7 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
           setShowHint(true)
         }
       } catch {
-        // Clipboard access denied
+        // Clipboard access denied — intentionally ignored
       }
     }
     checkClipboard()
@@ -268,6 +268,7 @@ function UrlInput({ value, onChange, onSubmit, isProcessing }) {
             onClick={handleClear}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
+            aria-label="Clear URL"
           >
             <X size={16} />
           </motion.button>
@@ -484,8 +485,38 @@ function App() {
   const [selectedOutputFormat, setSelectedOutputFormat] = useState(null)
   const [downloads, setDownloads] = useState([])
 
-  const handleAnalyze = async () => {
+  // Refs for cleanup
+  const abortControllerRef = useRef(null)
+  const eventSourcesRef = useRef(new Map())
+  const cleanupTimersRef = useRef(new Map())
+
+  // Cleanup on unmount: abort pending fetches and close all EventSources
+  useEffect(() => {
+    const esMap = eventSourcesRef.current
+    const timerMap = cleanupTimersRef.current
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      esMap.forEach((es) => {
+        try { es.close() } catch { /* ignore */ }
+      })
+      esMap.clear()
+      timerMap.forEach((timer) => clearTimeout(timer))
+      timerMap.clear()
+    }
+  }, [])
+
+  const handleAnalyze = useCallback(async () => {
     if (!url) return
+
+    // Abort any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setIsProcessing(true)
     setError(null)
     setMediaInfo(null)
@@ -494,7 +525,8 @@ function App() {
       const response = await fetch(`${API_URL}/api/info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url }),
+        signal: controller.signal
       })
 
       const data = await response.json()
@@ -505,22 +537,32 @@ function App() {
 
       setMediaInfo(data)
     } catch (err) {
+      if (err.name === 'AbortError') {
+        // User cancelled or component unmounted — don't show error
+        return
+      }
       setError(err.message)
     } finally {
       setIsProcessing(false)
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null
+      }
     }
-  }
+  }, [url])
 
   // SSE-based download - replaces polling
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!selectedFormat) return
 
     const formatInfo = FORMAT_OPTIONS.find(f => f.id === selectedFormat)
     const quality = selectedQuality || formatInfo?.quality[0] || 'Best'
     const outputFormat = selectedOutputFormat || formatInfo?.formats[0] || (selectedFormat === 'audio' ? 'mp3' : 'mp4')
 
+    // Generate a stable local client ID for React key
+    const clientId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
     const newDownload = {
-      id: Date.now(),
+      id: clientId,
       name: mediaInfo?.title || 'Media File',
       format: selectedFormat,
       quality: quality,
@@ -531,6 +573,8 @@ function App() {
     }
 
     setDownloads(prev => [...prev, newDownload])
+
+    let eventSource = null
 
     try {
       // Start download - get download ID
@@ -553,13 +597,28 @@ function App() {
       const { downloadId } = await response.json()
       if (!downloadId) throw new Error('No download ID returned')
 
-      // Update download with ID and switch to SSE stream
+      // Update download with server downloadId
       setDownloads(prev => prev.map(d =>
-        d.id === newDownload.id ? { ...d, downloadId, status: 'downloading' } : d
+        d.id === clientId ? { ...d, downloadId, status: 'downloading' } : d
       ))
 
       // Open SSE connection for real-time progress
-      const eventSource = new EventSource(`${API_URL}/api/download/${downloadId}/stream`)
+      eventSource = new EventSource(`${API_URL}/api/download/${downloadId}/stream`)
+      eventSourcesRef.current.set(clientId, eventSource)
+
+      // Auto-cleanup after 6 minutes
+      const cleanupTimer = setTimeout(() => {
+        if (eventSourcesRef.current.has(clientId)) {
+          const es = eventSourcesRef.current.get(clientId)
+          if (es) {
+            try { es.close() } catch { /* ignore */ }
+          }
+          eventSourcesRef.current.delete(clientId)
+        }
+        setDownloads(prev => prev.filter(d => d.id !== clientId))
+        cleanupTimersRef.current.delete(clientId)
+      }, 360000)
+      cleanupTimersRef.current.set(clientId, cleanupTimer)
 
       eventSource.onmessage = (event) => {
         try {
@@ -569,12 +628,12 @@ function App() {
             console.log('SSE connected for download:', downloadId)
           } else if (data.type === 'progress') {
             setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, progress: data.progress, status: data.status } : d
+              d.id === clientId ? { ...d, progress: data.progress, status: data.status } : d
             ))
           } else if (data.type === 'complete') {
             // Download complete - fetch the file
             setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, progress: 100, status: 'complete', filename: data.filename } : d
+              d.id === clientId ? { ...d, progress: 100, status: 'complete', filename: data.filename } : d
             ))
 
             // Auto-download the file
@@ -593,13 +652,34 @@ function App() {
                 window.URL.revokeObjectURL(downloadUrl)
                 document.body.removeChild(a)
               })
+              .catch(err => {
+                console.error('File download error:', err)
+                setDownloads(prev => prev.map(d =>
+                  d.id === clientId ? { ...d, status: 'error', error: err.message } : d
+                ))
+              })
 
-            eventSource.close()
+            // Cleanup
+            if (eventSource) {
+              try { eventSource.close() } catch { /* ignore */ }
+              eventSourcesRef.current.delete(clientId)
+            }
+            if (cleanupTimersRef.current.has(clientId)) {
+              clearTimeout(cleanupTimersRef.current.get(clientId))
+              cleanupTimersRef.current.delete(clientId)
+            }
           } else if (data.type === 'error') {
             setDownloads(prev => prev.map(d =>
-              d.id === newDownload.id ? { ...d, status: 'error', error: data.error } : d
+              d.id === clientId ? { ...d, status: 'error', error: data.error } : d
             ))
-            eventSource.close()
+            if (eventSource) {
+              try { eventSource.close() } catch { /* ignore */ }
+              eventSourcesRef.current.delete(clientId)
+            }
+            if (cleanupTimersRef.current.has(clientId)) {
+              clearTimeout(cleanupTimersRef.current.get(clientId))
+              cleanupTimersRef.current.delete(clientId)
+            }
           }
         } catch (err) {
           console.error('SSE parse error:', err)
@@ -609,26 +689,35 @@ function App() {
       eventSource.onerror = () => {
         // Only show error if download is still in progress
         setDownloads(prev => prev.map(d =>
-          d.id === newDownload.id && d.status === 'downloading'
+          d.id === clientId && d.status === 'downloading'
             ? { ...d, status: 'error', error: 'Connection lost. Please try again.' } : d
         ))
-        eventSource.close()
+        if (eventSource) {
+          try { eventSource.close() } catch { /* ignore */ }
+          eventSourcesRef.current.delete(clientId)
+        }
+        if (cleanupTimersRef.current.has(clientId)) {
+          clearTimeout(cleanupTimersRef.current.get(clientId))
+          cleanupTimersRef.current.delete(clientId)
+        }
       }
-
-      // Cleanup after 6 minutes
-      setTimeout(() => {
-        eventSource.close()
-        setDownloads(prev => prev.filter(d => d.id !== newDownload.id))
-      }, 360000)
 
     } catch (err) {
       console.error('Download error:', err)
       setDownloads(prev => prev.map(d =>
-        d.id === newDownload.id ? { ...d, status: 'error', error: err.message || 'Unknown error' } : d
+        d.id === clientId ? { ...d, status: 'error', error: err.message || 'Unknown error' } : d
       ))
       setError(err.message || 'Download failed')
+      if (eventSource) {
+        try { eventSource.close() } catch { /* ignore */ }
+        eventSourcesRef.current.delete(clientId)
+      }
+      if (cleanupTimersRef.current.has(clientId)) {
+        clearTimeout(cleanupTimersRef.current.get(clientId))
+        cleanupTimersRef.current.delete(clientId)
+      }
     }
-  }
+  }, [selectedFormat, selectedQuality, selectedOutputFormat, url, mediaInfo])
 
   return (
     <div className="app">
@@ -671,6 +760,7 @@ function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
+              role="alert"
             >
               <AlertCircle size={18} />
               <span>{error}</span>
