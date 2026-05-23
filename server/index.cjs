@@ -26,11 +26,23 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const COOKIES_FROM_BROWSER = process.env.COOKIES_FROM_BROWSER || ''; // e.g. 'chrome', 'firefox', 'safari'
 const COOKIES_PATH = process.env.COOKIES_PATH || '';
 const CORS_ORIGINS = (process.env.CORS_ORIGIN || FRONTEND_URL)
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
+
+// Helper: add cookie args to yt-dlp command
+// COOKIES_FROM_BROWSER takes priority (e.g. 'chrome', 'firefox', 'safari')
+// Falls back to COOKIES_PATH if browser option is not set
+function addCookieArgs(args) {
+  if (COOKIES_FROM_BROWSER) {
+    args.unshift('--cookies-from-browser', COOKIES_FROM_BROWSER);
+  } else if (COOKIES_PATH) {
+    args.unshift('--cookies', COOKIES_PATH);
+  }
+}
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -156,9 +168,7 @@ app.post('/api/info', async (req, res) => {
       url
     ];
 
-    if (COOKIES_PATH) {
-      infoArgs.unshift('--cookies', COOKIES_PATH);
-    }
+    addCookieArgs(infoArgs);
 
     const ytdlp = spawn('yt-dlp', infoArgs, { timeout: 60000 });
 
@@ -284,9 +294,7 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
 
   const args = (formatHandlers[format] || (() => ['-o', `${tempPath}.%(ext)s`, '--no-warnings', url]))();
 
-  if (COOKIES_PATH) {
-    args.unshift('--cookies', COOKIES_PATH);
-  }
+  addCookieArgs(args);
 
   const dl = downloads.get(downloadId);
   if (dl) {
