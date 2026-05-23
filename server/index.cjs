@@ -54,6 +54,24 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Helper: detect YouTube bot-check errors and format a user-friendly message
+function formatYtError(rawError) {
+  const text = (rawError || '').toLowerCase();
+  if (text.includes('sign in to confirm') || text.includes('not a bot')) {
+    return 'YouTube requires sign-in for this video. Set COOKIES_PATH in your .env file (see .env.example for instructions).';
+  }
+  if (text.includes('requested format is not available')) {
+    return 'This video format is not available. Try a different quality or format.';
+  }
+  if (text.includes('private video') || text.includes('this video is private')) {
+    return 'This video is private and cannot be downloaded.';
+  }
+  if (text.includes('age-restricted')) {
+    return 'This video is age-restricted. You may need to provide cookies from a logged-in account.';
+  }
+  return rawError;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -195,7 +213,7 @@ app.post('/api/info', async (req, res) => {
             errorMsg = errorMsg.replace(/^(ERROR|download|info):\s*/i, '');
           }
         }
-        return res.status(500).json({ error: errorMsg });
+        return res.status(500).json({ error: formatYtError(errorMsg) });
       }
 
       try {
@@ -352,9 +370,10 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
           errorMsg = errorMsg.replace(/^(ERROR|download|info):\s*/i, '');
         }
       }
+      const friendlyError = formatYtError(errorMsg);
       dl.status = 'error';
-      dl.error = errorMsg;
-      broadcastProgress(downloadId, { type: 'error', error: errorMsg });
+      dl.error = friendlyError;
+      broadcastProgress(downloadId, { type: 'error', error: friendlyError });
     } else {
       // Find the downloaded file
       fs.readdir(DOWNLOAD_DIR, (err, files) => {
