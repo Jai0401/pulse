@@ -23,6 +23,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.get('/pulse', (req, res) => {
+  res.json({ status: 'ok', service: 'pulse' });
+});
+
 const PORT = process.env.PORT || 3001;
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
