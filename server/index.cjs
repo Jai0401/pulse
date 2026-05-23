@@ -6,10 +6,24 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
-app.use(cors());
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const CORS_ORIGINS = (process.env.CORS_ORIGIN || FRONTEND_URL)
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (CORS_ORIGINS.includes('*')) return callback(null, true);
+    if (CORS_ORIGINS.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json());
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 const downloads = new Map();

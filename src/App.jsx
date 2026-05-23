@@ -76,7 +76,7 @@ const FORMAT_OPTIONS = [
   { id: 'subtitle', label: 'Subtitles', icon: FileText, formats: ['SRT', 'VTT', 'ASS'], quality: ['Original', 'Translated'] },
 ]
 
-const API_URL = 'http://localhost:3001'
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '')
 
 const DOWNLOAD_STATUS = {
   PREPARING: 'preparing',

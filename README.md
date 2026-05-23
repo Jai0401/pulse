@@ -43,6 +43,20 @@ npm run dev
 node server/index.cjs
 ```
 
+### Environment Configuration
+
+Create a local .env file (copy from .env.example) and set your API base URL:
+
+```bash
+# Frontend (Vite)
+VITE_API_URL=http://localhost:3001
+
+# Backend (Express)
+PORT=3001
+FRONTEND_URL=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173
+```
+
 ### Usage
 
 1. Paste any media URL into the input
@@ -56,3 +70,28 @@ node server/index.cjs
 |----------|--------|
 | `Cmd/Ctrl + Enter` | Analyze URL |
 | `Esc` | Clear input |
+
+## Deployment (Frontend on Vercel, Backend on Render)
+
+### Vercel (Frontend)
+
+Set the environment variable in Vercel:
+
+```
+VITE_API_URL=https://your-render-service.onrender.com
+```
+
+### Render (Backend)
+
+Create a new Web Service pointing to this repo. Use:
+
+- Build Command: npm install
+- Start Command: node server/index.cjs
+
+Set environment variables:
+
+```
+PORT=3001
+FRONTEND_URL=https://your-vercel-app.vercel.app
+CORS_ORIGIN=https://your-vercel-app.vercel.app
+```
