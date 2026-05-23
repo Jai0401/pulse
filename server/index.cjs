@@ -23,6 +23,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const durationMs = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`);
+  });
+  next();
+});
+
 app.get('/pulse', (req, res) => {
   res.json({ status: 'ok', service: 'pulse' });
 });
@@ -58,6 +67,8 @@ app.post('/api/info', async (req, res) => {
     return res.status(400).json({ error: 'URL required' });
   }
 
+  console.log(`[info] Fetching metadata: ${url}`);
+
   try {
     const ytdlp = spawn('yt-dlp', [
       '--dump-json',
@@ -70,7 +81,11 @@ app.post('/api/info', async (req, res) => {
     let error = '';
 
     ytdlp.stdout.on('data', (chunk) => { data += chunk; });
-    ytdlp.stderr.on('data', (chunk) => { error += chunk; });
+    ytdlp.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      error += text;
+      if (text.trim()) console.error(`[info][yt-dlp] ${text.trim()}`);
+    });
 
     ytdlp.on('close', (code) => {
       if (code !== 0) {
@@ -132,6 +147,8 @@ app.post('/api/download', async (req, res) => {
   // Return download ID immediately
   res.json({ downloadId, status: 'started' });
 
+  console.log(`[download] Started ${downloadId} (${format}/${outputFormat || 'default'})`);
+
   // Start the actual download process
   processDownload(downloadId, url, format, quality, outputFormat, tempPath, tempFilename);
 });
@@ -182,6 +199,8 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
 
   const ytdlp = spawn('yt-dlp', args);
 
+  let error = '';
+
   ytdlp.stdout.on('data', (chunk) => {
     const output = chunk.toString();
     const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%/);
@@ -196,9 +215,17 @@ async function processDownload(downloadId, url, format, quality, outputFormat, t
     }
   });
 
+  ytdlp.stderr.on('data', (chunk) => {
+    const text = chunk.toString();
+    error += text;
+    if (text.trim()) console.error(`[download][${downloadId}][yt-dlp] ${text.trim()}`);
+  });
+
   ytdlp.on('close', (code) => {
     const dl = downloads.get(downloadId);
     if (!dl) return;
+
+    console.log(`[download] Finished ${downloadId} with code ${code}`);
 
     if (code !== 0) {
       const errorLines = error.split('\n').filter(l => l.trim());
