@@ -54,11 +54,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Helper: detect YouTube bot-check errors and format a user-friendly message
+// Helper: detect YouTube errors and format a user-friendly message
 function formatYtError(rawError) {
   const text = (rawError || '').toLowerCase();
   if (text.includes('sign in to confirm') || text.includes('not a bot')) {
-    return 'YouTube requires sign-in for this video. Set COOKIES_PATH in your .env file (see .env.example for instructions).';
+    return 'YouTube is asking for sign-in on this video. Try a different video, or if you own this content, download it directly from YouTube.';
   }
   if (text.includes('requested format is not available')) {
     return 'This video format is not available. Try a different quality or format.';
@@ -67,7 +67,7 @@ function formatYtError(rawError) {
     return 'This video is private and cannot be downloaded.';
   }
   if (text.includes('age-restricted')) {
-    return 'This video is age-restricted. You may need to provide cookies from a logged-in account.';
+    return 'This video is age-restricted and cannot be downloaded.';
   }
   return rawError;
 }
